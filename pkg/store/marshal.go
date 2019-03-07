@@ -71,5 +71,10 @@ func UnmarshalStacks(resource *api.Resource) (*types.Stack, *interfaces.SwarmSta
 		CreatedAt: createdAt,
 		UpdatedAt: updatedAt,
 	}
+	combinedStack.Stack.Status = types.StackStatus{
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+	}
+
 	return combinedStack.Stack, combinedStack.SwarmStack, nil
 }

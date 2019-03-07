@@ -261,6 +261,10 @@ var _ = Describe("StackStore", func() {
 				},
 				Orchestrator: stack.Orchestrator,
 				Spec:         stack.Spec,
+				Status: types.StackStatus{
+					CreatedAt: timeObj,
+					UpdatedAt: timeObj,
+				},
 			}
 			mockClient.EXPECT().GetResource(
 				context.TODO(),
@@ -331,6 +335,10 @@ var _ = Describe("StackStore", func() {
 									Name: fmt.Sprintf("svc_%v", i),
 								},
 							},
+						},
+						Status: types.StackStatus{
+							CreatedAt: timeObj,
+							UpdatedAt: timeObj,
 						},
 					}
 					sst := interfaces.SwarmStack{
