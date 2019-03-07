@@ -1,6 +1,8 @@
 package types
 
 import (
+	"time"
+
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/stacks/pkg/compose/types"
 )
@@ -76,15 +78,27 @@ type StackResources struct {
 	Volumes  map[string]StackResource `json:"volumes,omitempty"`
 }
 
+// ResourceKind identifies the type of orchestrator resource managed by a
+// stack.
+type ResourceKind string
+
+const (
+	KindKubeDeployment ResourceKind = "deployment"
+	KindKubeDaemonset  ResourceKind = "daemonset"
+	KindSwarmService   ResourceKind = "service"
+	KindSwarmNetwork   ResourceKind = "network"
+	KindSwarmSecret    ResourceKind = "secret"
+	KindSwarmConfig    ResourceKind = "config"
+)
+
 // StackResource contains a link to a single instance of the spec
 // For example, when a Service is run on basic containers, the ID would
 // contain the container ID.  When the Service is running on Swarm the ID would be
 // a Swarm Service ID.  When mapped to kubernetes, it would map to a Deployment or
-// DaemonSet ID.
+// DaemonSet name.
 type StackResource struct {
-	Orchestrator OrchestratorChoice `json:"orchestrator"`
-	Kind         string             `json:"kind"`
-	ID           string             `json:"id"`
+	Kind ResourceKind `json:"kind"`
+	ID   string       `json:"id"`
 }
 
 // StackStatus defines the observed state of Stack
@@ -95,7 +109,8 @@ type StackStatus struct {
 	// ServicesStatus contains the last known status of the service
 	// The service name is the key in the map.
 	ServicesStatus map[string]ServiceStatus `json:"services_status"`
-	LastUpdated    string                   `json:"last_updated"`
+	CreatedAt      time.Time                `json:"last_updated"`
+	UpdatedAt      time.Time                `json:"last_updated"`
 }
 
 // ServiceStatus represents the latest known status of a service

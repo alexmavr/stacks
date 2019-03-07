@@ -9,6 +9,7 @@ import (
 	"context"
 
 	swarmapi "github.com/docker/swarmkit/api"
+	gogotypes "github.com/gogo/protobuf/types"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -161,6 +162,9 @@ func GetStack(ctx context.Context, rc ResourcesClient, id string) (types.Stack, 
 		return types.Stack{}, errors.New("got back an empty stack")
 	}
 
+	stack.Status.CreatedAt = gogotypes.TimestampFromProto(resource.Meta.CreatedAt)
+	stack.Status.UpdatedAt = gogotypes.TimestampFromProto(resource.Meta.UpdatedAt)
+
 	// and then return the stack
 	return *stack, nil
 }
@@ -205,6 +209,8 @@ func ListStacks(ctx context.Context, rc ResourcesClient) ([]types.Stack, error) 
 		if err != nil {
 			return nil, err
 		}
+		stack.Status.CreatedAt = gogotypes.TimestampFromProto(resource.Meta.CreatedAt)
+		stack.Status.UpdatedAt = gogotypes.TimestampFromProto(resource.Meta.UpdatedAt)
 		stacks = append(stacks, *stack)
 	}
 	return stacks, nil

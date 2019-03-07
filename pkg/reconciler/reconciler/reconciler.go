@@ -1,12 +1,10 @@
 package reconciler
 
 import (
-	"fmt"
 	"reflect"
 
 	dockerTypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/events"
-	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/errdefs"
 	"github.com/sirupsen/logrus"
@@ -206,7 +204,7 @@ func (r *reconciler) deleteStack(id string) error {
 	// not be deleted when we reconcile them in a bit.
 	//
 	// We do have to get all services labeled for this stack
-	services, err := r.cli.GetServices(dockerTypes.ServiceListOptions{Filters: stackLabelFilter(id)})
+	services, err := r.cli.GetServices(dockerTypes.ServiceListOptions{Filters: interfaces.StackLabelFilter(id)})
 	if err != nil {
 		return err
 	}
@@ -224,12 +222,4 @@ func (r *reconciler) handleDeletedService(id string) error {
 	// Otherwise, we have to cache what services belong to what stacks in order
 	// to handle deletes.
 	return nil
-}
-
-// stackLabelFilter constructs a filter.Args which filters for stacks based on
-// the stack label being equal to the stack ID.
-func stackLabelFilter(stackID string) filters.Args {
-	return filters.NewArgs(
-		filters.Arg("label", fmt.Sprintf("%s=%s", interfaces.StackLabel, stackID)),
-	)
 }
