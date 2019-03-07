@@ -7,7 +7,8 @@ import (
 	"github.com/docker/stacks/pkg/compose/types"
 )
 
-// Stack represents a runtime instantiation of a Docker Compose based application
+// Stack represents a runtime instantiation of a Docker Compose based
+// application.
 type Stack struct {
 	Version
 	Spec           StackSpec          `json:"spec"`
@@ -15,7 +16,6 @@ type Stack struct {
 	Orchestrator   OrchestratorChoice `json:"orchestrator"`
 	Status         StackStatus        `json:"stack_status"`
 
-	// TODO - temporary (not in swagger)
 	ID string
 }
 
@@ -91,10 +91,10 @@ const (
 	KindSwarmConfig    ResourceKind = "config"
 )
 
-// StackResource contains a link to a single instance of the spec
-// For example, when a Service is run on basic containers, the ID would
-// contain the container ID.  When the Service is running on Swarm the ID would be
-// a Swarm Service ID.  When mapped to kubernetes, it would map to a Deployment or
+// StackResource contains a link to a single instance of the spec For example,
+// when a Service is run on basic containers, the ID would contain the
+// container ID.  When the Service is running on Swarm the ID would be a Swarm
+// Service ID.  When mapped to kubernetes, it would map to a Deployment or
 // DaemonSet name.
 type StackResource struct {
 	Kind ResourceKind `json:"kind"`
@@ -103,9 +103,9 @@ type StackResource struct {
 
 // StackStatus defines the observed state of Stack
 type StackStatus struct {
-	Message       string `json:"message"`
-	Phase         string `json:"phase"`
-	OverallHealth string `json:"overall_health"`
+	Message       string      `json:"message"`
+	Phase         string      `json:"phase"`
+	OverallHealth StackHealth `json:"overall_health"`
 	// ServicesStatus contains the last known status of the service
 	// The service name is the key in the map.
 	ServicesStatus map[string]ServiceStatus `json:"services_status"`
@@ -113,7 +113,17 @@ type StackStatus struct {
 	UpdatedAt      time.Time                `json:"last_updated"`
 }
 
-// ServiceStatus represents the latest known status of a service
+// StackHealth represents the health of a stack
+type StackHealth string
+
+const (
+	StackHealthy   StackHealth = "healthy"
+	StackDegraded  StackHealth = "degraded"
+	StackUnhealthy StackHealth = "unhealthy"
+	StackUnknown   StackHealth = "unknown"
+)
+
+// ServiceStatus represents the latest known status of a service.
 type ServiceStatus struct {
 	// DesiredTasks represents the expected number of running tasks
 	// given the current service spec settings, and number of nodes
@@ -122,13 +132,14 @@ type ServiceStatus struct {
 	RunningTasks uint64 `json:"running_tasks"`
 }
 
-// StackTaskList contains a summary of the underlying tasks that make up this Stack
+// StackTaskList contains a summary of the underlying tasks that make up this
+// Stack.
 type StackTaskList struct {
 	CurrentTasks []StackTask `json:"current_tasks"`
 	PastTasks    []StackTask `json:"past_tasks"`
 }
 
-// StackTask This contains a summary of the Stacks task
+// StackTask This contains a summary of the Stacks task.
 type StackTask struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`
@@ -139,17 +150,20 @@ type StackTask struct {
 	Err          string `json:"err"`
 }
 
-// OrchestratorChoice This field specifies which orchestrator the stack is deployed on.
+// OrchestratorChoice This field specifies which orchestrator the stack is
+// deployed on.
 type OrchestratorChoice string
 
 const (
-	// OrchestratorSwarm defines the OrchestratorChoice valud for Swarm
+	// OrchestratorSwarm defines the OrchestratorChoice value for Swarm
 	OrchestratorSwarm = "swarm"
 
-	// OrchestratorKubernetes defines the OrchestratorChoice valud for Kubernetes
+	// OrchestratorKubernetes defines the OrchestratorChoice value for
+	// Kubernetes
 	OrchestratorKubernetes = "kubernetes"
 
-	// OrchestratorNone defines the OrchestratorChoice valud for no orchestrator (basic containers)
+	// OrchestratorNone defines the OrchestratorChoice value for no
+	// orchestrator (basic containers)
 	OrchestratorNone = "none"
 )
 
