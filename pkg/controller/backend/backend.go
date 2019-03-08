@@ -3,7 +3,10 @@ package backend
 import (
 	"fmt"
 
+	dockerTypes "github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/swarm"
+
 	"github.com/docker/stacks/pkg/compose/convert"
 	"github.com/docker/stacks/pkg/compose/loader"
 	composetypes "github.com/docker/stacks/pkg/compose/types"
@@ -87,6 +90,54 @@ func (b *DefaultStacksBackend) GetSwarmStack(id string) (interfaces.SwarmStack, 
 // ListStacks lists all stacks.
 func (b *DefaultStacksBackend) ListStacks() ([]types.Stack, error) {
 	return b.stackStore.ListStacks()
+}
+
+// GetStackTasks retrieves a stacks tasks by its ID.
+func (b *DefaultStacksBackend) GetStackTasks(id string) (types.StackTaskList, error) {
+	return types.StackTaskList{}, nil
+}
+
+// getSwarmTasks returns all swarm tasks for a set of requested stackIDs.
+func (b *DefaultStacksBackend) getSwarmTasks(stackIDs []string) (map[string][]swarm.Task, error) {
+	// If a single stack's tasks has been requested, filter by that task's ID.
+	// Otherwise, get all tasks with the StackLabel key.
+	var f filters.Args
+	switch len(stackIDs) {
+	case 0:
+		return map[string][]swarm.Task{}, nil
+	case 1:
+		f = interfaces.StackLabelFilter(stackIDs[0])
+	default:
+		f = filters.NewArgs(filters.Arg("label", interfaces.StackLabel))
+	}
+
+	// Generate the map using the requested stackIDs
+	idsmap := make(map[string][]swarm.Task)
+	for _, stackID := range stackIDs {
+		idsmap[stackID] = []swarm.Task{}
+	}
+
+	tasks, err := b.swarmBackend.GetTasks(dockerTypes.TaskListOptions{
+		Filters: f,
+	})
+	if err != nil {
+		return idsmap, fmt.Errorf("unable to get tasks for stacks %+v: %s", stackIDs, err)
+	}
+
+	for _, task := range tasks {
+		stackID, ok := task.Labels[interfaces.StackLabel]
+		if !ok {
+			return idsmap, fmt.Errorf("internal error: found task with no stack label despite label")
+		}
+
+		// Filter out tasks not from one of our desired stacks.
+		stackTasks, found := idsmap[stackID]
+		if found {
+			idsmap[stackID] = append(stackTasks, task)
+		}
+	}
+
+	return idsmap, nil
 }
 
 // ListSwarmStacks lists all swarm stacks.

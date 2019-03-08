@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"gotest.tools/assert"
 
 	dockerTypes "github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/swarm"
 	composeTypes "github.com/docker/stacks/pkg/compose/types"
 	"github.com/docker/stacks/pkg/interfaces"
@@ -55,6 +57,84 @@ func TestStacksBackendUpdateOutOfSequence(t *testing.T) {
 	stack, err = b.GetStack(stack.ID)
 	require.NoError(err)
 	require.Equal(stack.Spec.Collection, "test1")
+}
+
+func TestGetSwarmTasks(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	backendClient := mocks.NewMockBackendClient(ctrl)
+	b := NewDefaultStacksBackend(interfaces.NewFakeStackStore(), backendClient)
+
+	// No stack IDs
+	res, err := b.getSwarmTasks([]string{})
+	require.NoError(err)
+	require.Empty(res)
+
+	task1 := swarm.Task{
+		Annotations: swarm.Annotations{
+			Name: "task1",
+			Labels: map[string]string{
+				interfaces.StackLabel: "id1",
+			},
+		},
+	}
+	task2 := swarm.Task{
+		Annotations: swarm.Annotations{
+			Name: "task2",
+			Labels: map[string]string{
+				interfaces.StackLabel: "id2",
+			},
+		},
+	}
+	task3 := swarm.Task{
+		Annotations: swarm.Annotations{
+			Name: "task3",
+			Labels: map[string]string{
+				interfaces.StackLabel: "id2",
+			},
+		},
+	}
+
+	// Case where one stackID is passed
+	backendClient.EXPECT().GetTasks(
+		//		gomock.Eq(
+		types.TaskListOptions{
+			Filters: filters.NewArgs(
+				filters.Arg("label", fmt.Sprintf("%s=id1", interfaces.StackLabel)),
+			),
+		},
+	).Return([]swarm.Task{
+		task1,
+	}, nil)
+
+	res, err = b.getSwarmTasks([]string{"id1"})
+	require.NoError(err)
+	require.Len(res, 1)
+	require.Contains(res, "id1")
+	require.Len(res["id1"], 1)
+	require.Equal(res["id1"][0].Annotations.Name, "task1")
+
+	// Case where multiple stackIDs are passed
+	backendClient.EXPECT().GetTasks(
+		gomock.Eq(
+			filters.NewArgs(
+				filters.Arg("label", interfaces.StackLabel),
+			),
+		),
+	).Return([]swarm.Task{
+		task1,
+		task2,
+		task3,
+	}, nil)
+
+	res, err = b.getSwarmTasks([]string{"id1", "id2"})
+	require.NoError(err)
+	require.Len(res, 2)
+	require.Contains(res, "id1")
+	require.Contains(res, "id2")
+	require.Len(res["id1"], 1)
+	require.Equal(res["id1"][0].Annotations.Name, "task1")
+	require.Len(res["id2"], 2)
 }
 
 func TestStacksBackendInvalidCreate(t *testing.T) {

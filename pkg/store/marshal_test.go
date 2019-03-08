@@ -49,6 +49,10 @@ func TestMarshalUnmarshal(t *testing.T) {
 			},
 			Collection: "something",
 		},
+		Status: types.StackStatus{
+			CreatedAt: ct,
+			UpdatedAt: ut,
+		},
 		Orchestrator: types.OrchestratorSwarm,
 	}
 	swarmStack := &interfaces.SwarmStack{
