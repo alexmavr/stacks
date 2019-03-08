@@ -97,6 +97,10 @@ func (b *DefaultStacksBackend) GetStackTasks(id string) (types.StackTaskList, er
 	return types.StackTaskList{}, nil
 }
 
+func (b *DefaultStacksBackend) populateStackStatus(stacks []types.Stack) ([]types.Stack, error) {
+newStacks := []types.Stack
+}
+
 // getSwarmTasks returns all swarm tasks for a set of requested stackIDs.
 func (b *DefaultStacksBackend) getSwarmTasks(stackIDs []string) (map[string][]swarm.Task, error) {
 	// If a single stack's tasks has been requested, filter by that task's ID.
