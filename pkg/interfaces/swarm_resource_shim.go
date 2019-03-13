@@ -43,6 +43,11 @@ func (c *SwarmResourceAPIClientShim) GetNode(id string) (swarm.Node, error) {
 	return node, err
 }
 
+// GetNodes returns all nodes.
+func (c *SwarmResourceAPIClientShim) GetNodes(opts dockerTypes.NodeListOptions) ([]swarm.Node, error) {
+	return c.dclient.NodeList(context.Background(), opts)
+}
+
 // GetServices lists services.
 func (c *SwarmResourceAPIClientShim) GetServices(options dockerTypes.ServiceListOptions) ([]swarm.Service, error) {
 	return c.dclient.ServiceList(context.Background(), options)

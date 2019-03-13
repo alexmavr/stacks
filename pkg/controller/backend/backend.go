@@ -97,22 +97,270 @@ func (b *DefaultStacksBackend) GetStackTasks(id string) (types.StackTaskList, er
 	return types.StackTaskList{}, nil
 }
 
-func (b *DefaultStacksBackend) populateStackStatus(stacks []types.Stack) ([]types.Stack, error) {
-newStacks := []types.Stack
+func (b *DefaultStacksBackend) getNodeCount() (uint64, error) {
+	nodes, err := b.swarmBackend.GetNodes(dockerTypes.NodeListOptions{})
+	if err != nil {
+		return 0, fmt.Errorf("unable to list nodes: %s", err)
+	}
+
+	return uint64(len(nodes)), nil
+}
+
+func (b *DefaultStacksBackend) getStackStatuses(stacks []types.Stack) ([]types.Stack, error) {
+	if len(stacks) == 0 {
+		return []types.Stack{}, nil
+	}
+
+	stackIDs := make([]string, len(stacks))
+	for i, stack := range stacks {
+		stackIDs[i] = stack.ID
+	}
+
+	// Get all the services, secrets, configs, networks and tasks
+	tasks, err := b.getSwarmTasks(stackIDs)
+	if err != nil {
+		return []types.Stack{}, fmt.Errorf("unable to get swarm tasks: %s", err)
+	}
+
+	services, err := b.getSwarmServices(stackIDs)
+	if err != nil {
+		return []types.Stack{}, fmt.Errorf("unable to get swarm services: %s", err)
+	}
+
+	secrets, err := b.getSwarmSecrets(stackIDs)
+	if err != nil {
+		return []types.Stack{}, fmt.Errorf("unable to get swarm secrets: %s", err)
+	}
+
+	configs, err := b.getSwarmConfigs(stackIDs)
+	if err != nil {
+		return []types.Stack{}, fmt.Errorf("unable to get swarm secrets: %s", err)
+	}
+
+	// TODO: also get networks
+	// TODO: also get volumes
+
+	nodeCount, err := b.getNodeCount()
+	if err != nil {
+		return []types.Stack{}, fmt.Errorf("unable to get nodes: %s", err)
+	}
+
+	newStacks := make([]types.Stack, len(stacks))
+	for _, stack := range stacks {
+		stackTasks, ok := tasks[stack.ID]
+		if !ok {
+			panic("internal error: task map does not contain expected ID")
+		}
+
+		stackServices, ok := services[stack.ID]
+		if !ok {
+			panic("internal error: services map does not contain expected ID")
+		}
+
+		stackSecrets, ok := secrets[stack.ID]
+		if !ok {
+			panic("internal error: services map does not contain expected ID")
+		}
+
+		stackConfigs, ok := configs[stack.ID]
+		if !ok {
+			panic("internal error: configs map does not contain expected ID")
+		}
+
+		// TODO: all resources
+		err := populateStackStatus(&stack, stackTasks, stackServices, stackSecrets, stackConfigs, nodeCount)
+		if err != nil {
+			return []types.Stack{}, fmt.Errorf("unable to populate stack status for stack %s: %s", stack.ID, err)
+		}
+
+		newStacks = append(newStacks, stack)
+	}
+
+	return newStacks, nil
+
+}
+
+func populateStackStatus(stack *types.Stack, tasks []swarm.Task, services []swarm.Service, secrets []swarm.Secret, configs []swarm.Config, numNodes uint64) error {
+	stack.Resources = types.StackResources{
+		Services: stackServices(services),
+		Secrets:  stackSecrets(secrets),
+		Configs:  stackConfigs(configs),
+	}
+
+	for _, service := range services {
+		// Determine the desired tasks for the service
+		var desiredTasks uint64
+		if service.Spec.Mode.Replicated != nil {
+			desiredTasks = *service.Spec.Mode.Replicated.Replicas
+		} else {
+			// A Global mode service has a desired number of tasks equal to the
+			// number of nodes.
+			desiredTasks = numNodes
+		}
+
+		// Determine the "current" tasks for the service
+		currentTasks := 0
+		for _, task := range tasks {
+			if task.ServiceID == service.ID && task.Status.State == swarm.TaskStateRunning {
+				curentTasks++
+			}
+		}
+
+		stack.Status.ServicesStatus[service.Spec.Name] = types.ServiceStatus{
+			CurrentTasks: currentTasks,
+			DesiredTasks: desiredTasks,
+		}
+	}
+
+	// Calculate the overall status from the ServicesStatus field
+	// TODO
+
+	return nil
+}
+
+func stackServices(services []swarm.Service) map[string]types.StackResource {
+	res := make(map[string]types.StackResource)
+	for _, service := range services {
+		res[service.Spec.Name] = types.StackResource{
+			ID:   service.ID,
+			Kind: types.KindSwarmService,
+		}
+	}
+	return res
+}
+
+func stackSecrets(secrets []swarm.Secret) map[string]types.StackResource {
+	res := make(map[string]types.StackResource)
+	for _, secret := range secrets {
+		res[secret.Spec.Name] = types.StackResource{
+			ID:   secret.ID,
+			Kind: types.KindSwarmSecret,
+		}
+	}
+	return res
+}
+
+func stackConfigs(configs []swarm.Config) map[string]types.StackResource {
+	res := make(map[string]types.StackResource)
+	for _, config := range configs {
+		res[config.Spec.Name] = types.StackResource{
+			ID:   config.ID,
+			Kind: types.KindSwarmConfig,
+		}
+	}
+
+	return res
+}
+
+// getSwarmServices returns all swarm secrets for a set of requested stackIDs.
+func (b *DefaultStacksBackend) getSwarmServices(stackIDs []string) (map[string][]swarm.Service, error) {
+	services, err := b.swarmBackend.GetServices(dockerTypes.ServiceListOptions{
+		Filters: stackLabelFilters(stackIDs),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("unable to list services: %s", err)
+	}
+
+	// Generate the map using the requested stackIDs
+	idsmap := make(map[string][]swarm.Service)
+	for _, stackID := range stackIDs {
+		idsmap[stackID] = []swarm.Service{}
+	}
+
+	for _, service := range services {
+		stackID, ok := service.Spec.Annotations.Labels[interfaces.StackLabel]
+		if !ok {
+			return idsmap, fmt.Errorf("internal error: found service with no stack label")
+		}
+
+		// Filter out services not from one of our desired stacks.
+		stackServices, found := idsmap[stackID]
+		if found {
+			idsmap[stackID] = append(stackServices, service)
+		}
+	}
+
+	return idsmap, nil
+}
+
+// getSwarmConfigs returns all swarm configs for a set of requested stackIDs.
+func (b *DefaultStacksBackend) getSwarmConfigs(stackIDs []string) (map[string][]swarm.Config, error) {
+	configs, err := b.swarmBackend.GetConfigs(dockerTypes.ConfigListOptions{
+		Filters: stackLabelFilters(stackIDs),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("unable to list configs: %s", err)
+	}
+
+	// Generate the map using the requested stackIDs
+	idsmap := make(map[string][]swarm.Config)
+	for _, stackID := range stackIDs {
+		idsmap[stackID] = []swarm.Config{}
+	}
+
+	for _, config := range configs {
+		stackID, ok := config.Spec.Annotations.Labels[interfaces.StackLabel]
+		if !ok {
+			return idsmap, fmt.Errorf("internal error: found service with no stack label")
+		}
+
+		// Filter out services not from one of our desired stacks.
+		stackConfigs, found := idsmap[stackID]
+		if found {
+			idsmap[stackID] = append(stackConfigs, config)
+		}
+	}
+
+	return idsmap, nil
+}
+
+// getSwarmSecrets returns all swarm secrets for a set of requested stackIDs.
+func (b *DefaultStacksBackend) getSwarmSecrets(stackIDs []string) (map[string][]swarm.Secret, error) {
+	secrets, err := b.swarmBackend.GetSecrets(dockerTypes.SecretListOptions{
+		Filters: stackLabelFilters(stackIDs),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("unable to list secrets: %s", err)
+	}
+
+	// Generate the map using the requested stackIDs
+	idsmap := make(map[string][]swarm.Secret)
+	for _, stackID := range stackIDs {
+		idsmap[stackID] = []swarm.Secret{}
+	}
+
+	for _, secret := range secrets {
+		stackID, ok := secret.Spec.Annotations.Labels[interfaces.StackLabel]
+		if !ok {
+			return idsmap, fmt.Errorf("internal error: found secret with no stack label")
+		}
+
+		// Filter out secrets not from one of our desired stacks.
+		stackSecrets, found := idsmap[stackID]
+		if found {
+			idsmap[stackID] = append(stackSecrets, secret)
+		}
+	}
+
+	return idsmap, nil
+}
+
+func stackLabelFilters(stackIDs []string) filters.Args {
+	// If a single stack's tasks has been requested, filter by that task's ID.
+	// Otherwise, get all tasks with the StackLabel key.
+	if len(stackIDs) == 1 {
+		return interfaces.StackLabelFilter(stackIDs[0])
+	}
+	return filters.NewArgs(filters.Arg("label", interfaces.StackLabel))
 }
 
 // getSwarmTasks returns all swarm tasks for a set of requested stackIDs.
 func (b *DefaultStacksBackend) getSwarmTasks(stackIDs []string) (map[string][]swarm.Task, error) {
-	// If a single stack's tasks has been requested, filter by that task's ID.
-	// Otherwise, get all tasks with the StackLabel key.
-	var f filters.Args
-	switch len(stackIDs) {
-	case 0:
-		return map[string][]swarm.Task{}, nil
-	case 1:
-		f = interfaces.StackLabelFilter(stackIDs[0])
-	default:
-		f = filters.NewArgs(filters.Arg("label", interfaces.StackLabel))
+	tasks, err := b.swarmBackend.GetTasks(dockerTypes.TaskListOptions{
+		Filters: stackLabelFilters(stackIDs),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("unable to get tasks for stacks %+v: %s", stackIDs, err)
 	}
 
 	// Generate the map using the requested stackIDs
@@ -121,17 +369,10 @@ func (b *DefaultStacksBackend) getSwarmTasks(stackIDs []string) (map[string][]sw
 		idsmap[stackID] = []swarm.Task{}
 	}
 
-	tasks, err := b.swarmBackend.GetTasks(dockerTypes.TaskListOptions{
-		Filters: f,
-	})
-	if err != nil {
-		return idsmap, fmt.Errorf("unable to get tasks for stacks %+v: %s", stackIDs, err)
-	}
-
 	for _, task := range tasks {
 		stackID, ok := task.Labels[interfaces.StackLabel]
 		if !ok {
-			return idsmap, fmt.Errorf("internal error: found task with no stack label despite label")
+			return idsmap, fmt.Errorf("internal error: found task with no stack label")
 		}
 
 		// Filter out tasks not from one of our desired stacks.

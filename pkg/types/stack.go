@@ -11,10 +11,10 @@ import (
 // application.
 type Stack struct {
 	Version
-	Spec           StackSpec          `json:"spec"`
-	StackResources StackResources     `json:"stack_resources"`
-	Orchestrator   OrchestratorChoice `json:"orchestrator"`
-	Status         StackStatus        `json:"stack_status"`
+	Spec         StackSpec          `json:"spec"`
+	Resources    StackResources     `json:"stack_resources"`
+	Orchestrator OrchestratorChoice `json:"orchestrator"`
+	Status       StackStatus        `json:"stack_status"`
 
 	ID string
 }
@@ -118,7 +118,6 @@ type StackHealth string
 
 const (
 	StackHealthy   StackHealth = "healthy"
-	StackDegraded  StackHealth = "degraded"
 	StackUnhealthy StackHealth = "unhealthy"
 	StackUnknown   StackHealth = "unknown"
 )
